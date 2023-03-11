@@ -380,7 +380,7 @@ class PlotterWidget(QMainWindow):
                 ] = -1  # make unselected points to noise points
             # fill all prediction nan values with -1 -> turns them
             # into noise points
-            self.label_ids = features['label']
+            self.label_ids = features["label"]
             self.cluster_ids = features[plot_cluster_name].fillna(-1)
 
             # get long colormap from function
@@ -448,9 +448,7 @@ class PlotterWidget(QMainWindow):
                     if not tracking_data:
                         max_timepoint = features[POINTER].max() + 1
                         label_id_list_per_timepoint = [
-                            features.loc[features[POINTER] == i][
-                                'label'
-                            ].tolist()
+                            features.loc[features[POINTER] == i]["label"].tolist()
                             for i in range(int(max_timepoint))
                         ]
                         prediction_lists_per_timepoint = [
@@ -470,7 +468,9 @@ class PlotterWidget(QMainWindow):
                         ]
 
                     cluster_image = dask_cluster_image_timelapse(
-                        self.analysed_layer.data, label_id_list_per_timepoint, prediction_lists_per_timepoint
+                        self.analysed_layer.data,
+                        label_id_list_per_timepoint,
+                        prediction_lists_per_timepoint,
                     )
 
                 elif len(self.analysed_layer.data.shape) <= 3:
