@@ -56,6 +56,7 @@ class DimensionalityReductionWidget(QWidget):
 
         self.worker = None
         self.viewer = napari_viewer
+        self.layer = None
 
         # QVBoxLayout - lines up widgets vertically
         self.setLayout(QVBoxLayout())
@@ -270,41 +271,8 @@ class DimensionalityReductionWidget(QWidget):
         update_container, self.update_button = button("Update Measurements")
         defaults_container, self.defaults_button = button("Restore Defaults")
 
-        def run_clicked():
-            if self.layer_select.value is None:
-                warnings.warn("No labels image was selected!")
-                return
-
-            if len(self.properties_list.selectedItems()) == 0:
-                warnings.warn("Please select some measurements!")
-                return
-
-            if self.algorithm_choice_list.current_choice == self.Options.EMPTY.value:
-                warnings.warn("Please select dimensionality reduction algorithm.")
-                return
-
-            self.run(
-                self.viewer,
-                self.layer_select.value,
-                [i.text() for i in self.properties_list.selectedItems()],
-                self.n_neighbors.value,
-                self.perplexity.value,
-                self.algorithm_choice_list.current_choice,
-                self.standardization.value,
-                self.explained_variance.value,
-                self.pca_components.value,
-                self.n_components.value,
-                self.umap_separate_thread.value,
-                self.min_distance_umap.value,
-                self.mds_metric.value,
-                self.mds_n_init.value,
-                self.mds_max_iter.value,
-                self.mds_eps.value,
-                self.custom_name.text(),
-            )
-
         # connect buttons with functions that need to be triggered by them
-        self.run_button.clicked.connect(run_clicked)
+        self.run_button.clicked.connect(self.on_run_clicked)
         self.update_button.clicked.connect(
             partial(update_properties_list, self, EXCLUDE)
         )
@@ -353,6 +321,39 @@ class DimensionalityReductionWidget(QWidget):
         self.algorithm_choice_list.changed.connect(self.change_settings_visibility)
 
         update_properties_list(self, EXCLUDE)
+        
+    def on_run_clicked(self):
+        if self.layer_select.value is None:
+            warnings.warn("No labels image was selected!")
+            return
+
+        if len(self.properties_list.selectedItems()) == 0:
+            warnings.warn("Please select some measurements!")
+            return
+
+        if self.algorithm_choice_list.current_choice == self.Options.EMPTY.value:
+            warnings.warn("Please select dimensionality reduction algorithm.")
+            return
+
+        self.run(
+            self.viewer,
+            self.layer_select.value,
+            [i.text() for i in self.properties_list.selectedItems()],
+            self.n_neighbors.value,
+            self.perplexity.value,
+            self.algorithm_choice_list.current_choice,
+            self.standardization.value,
+            self.explained_variance.value,
+            self.pca_components.value,
+            self.n_components.value,
+            self.umap_separate_thread.value,
+            self.min_distance_umap.value,
+            self.mds_metric.value,
+            self.mds_n_init.value,
+            self.mds_max_iter.value,
+            self.mds_eps.value,
+            self.custom_name.text(),
+        )
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -464,16 +465,8 @@ class DimensionalityReductionWidget(QWidget):
         print("Selected labels layer: " + str(layer))
         print("Selected measurements: " + str(selected_measurements_list))
 
-        def activate_buttons(error=None, active=True):
-            """Utility function to enable all the buttons again if an error/exception happens in a secondary thread or
-            the computation has finished successfully."""
-
-            buttons_active(
-                self.run_button, self.defaults_button, self.update_button, active=active
-            )
-
         # disable all the buttons while the computation is happening
-        activate_buttons(active=False)
+        self.activate_buttons(active=False)
 
         # try statement is added to catch any exceptions/errors and enable all the buttons again if that is the case
         try:
@@ -502,75 +495,6 @@ class DimensionalityReductionWidget(QWidget):
                     properties_to_reduce
                 )
 
-            def return_func_dim_reduction(result):
-                """
-                A function, which receives the result from dimensionality reduction functions if they finished
-                successfully, and writes result to the reg props table (features/properties of the layer),
-                which is also added to the napari viewer.
-
-                Parameters
-                -----------
-                result : Tuple(str, np.ndarray)
-                    A tuple returned by dimensionality reduction functions, where first item is the name of the
-                    algorithm, and second item is the embedding of features into the low dimensional space.
-                """
-                # all the buttons are activated again
-                activate_buttons()
-
-                if result[0] == "PCA":
-                    # check if principal components are already present
-                    # and remove them by overwriting the features
-                    tabular_data = get_layer_tabular_data(layer)
-                    dropkeys = [
-                        column
-                        for column in tabular_data.keys()
-                        if column.startswith("PC_")
-                    ]
-                    df_principal_components_removed = tabular_data.drop(
-                        dropkeys, axis=1
-                    )
-                    set_features(layer, df_principal_components_removed)
-
-                    result_column_name = (
-                        "PC_" if custom_name == DEFAULTS["custom_name"] else custom_name
-                    )
-
-                    # write result back to properties/features of the layer
-                    for i in range(0, len(result[1].T)):
-                        add_column_to_layer_tabular_data(
-                            layer,
-                            str(result_column_name) + str(i),
-                            result[1][:, i],
-                        )
-
-                elif (
-                    result[0] == "UMAP"
-                    or result[0] == "t-SNE"
-                    or result[0] == "Isomap"
-                    or result[0] == "MDS"
-                ):
-                    # write result back to properties/features of the layer
-                    if custom_name == DEFAULTS["custom_name"]:
-                        for i in range(0, n_components):
-                            add_column_to_layer_tabular_data(
-                                layer, result[0] + "_" + str(i), result[1][:, i]
-                            )
-                    else:
-                        for i in range(0, n_components):
-                            add_column_to_layer_tabular_data(
-                                layer,
-                                custom_name + "_" + str(i),
-                                result[1][:, i],
-                            )
-
-                else:
-                    "Dimensionality reduction not successful. Please try again"
-                    return
-
-                # add a table to napari viewer
-                show_table(viewer, layer)
-                print("Dimensionality reduction finished")
-
             # depending on the selected dim red algorithm start either a secondary thread or run in the same as napari
             if (
                 selected_algorithm == self.Options.UMAP.value
@@ -586,8 +510,8 @@ class DimensionalityReductionWidget(QWidget):
                     verbose=True,
                     _progress=True,
                 )
-                self.worker.returned.connect(return_func_dim_reduction)
-                self.worker.errored.connect(activate_buttons)
+                self.worker.returned.connect(self.return_func_dim_reduction)
+                self.worker.errored.connect(self.activate_buttons)
                 self.worker.start()
 
             elif (
@@ -605,7 +529,7 @@ class DimensionalityReductionWidget(QWidget):
                     verbose=False,
                 )
 
-                return_func_dim_reduction(result)
+                self.return_func_dim_reduction(result)
 
             elif selected_algorithm == self.Options.TSNE.value:
                 self.worker = create_worker(
@@ -615,8 +539,8 @@ class DimensionalityReductionWidget(QWidget):
                     n_components=n_components,
                     _progress=True,
                 )
-                self.worker.returned.connect(return_func_dim_reduction)
-                self.worker.errored.connect(activate_buttons)
+                self.worker.returned.connect(self.return_func_dim_reduction)
+                self.worker.errored.connect(self.activate_buttons)
                 self.worker.start()
 
             elif selected_algorithm == self.Options.PCA.value:
@@ -627,8 +551,8 @@ class DimensionalityReductionWidget(QWidget):
                     n_components=pca_components,
                     _progress=True,
                 )
-                self.worker.returned.connect(return_func_dim_reduction)
-                self.worker.errored.connect(activate_buttons)
+                self.worker.returned.connect(self.return_func_dim_reduction)
+                self.worker.errored.connect(self.activate_buttons)
                 self.worker.start()
 
             elif selected_algorithm == self.Options.ISOMAP.value:
@@ -639,8 +563,8 @@ class DimensionalityReductionWidget(QWidget):
                     n_components=n_components,
                     _progress=True,
                 )
-                self.worker.returned.connect(return_func_dim_reduction)
-                self.worker.errored.connect(activate_buttons)
+                self.worker.returned.connect(self.return_func_dim_reduction)
+                self.worker.errored.connect(self.activate_buttons)
                 self.worker.start()
 
             elif selected_algorithm == self.Options.MDS.value:
@@ -654,14 +578,93 @@ class DimensionalityReductionWidget(QWidget):
                     eps=mds_eps,
                     _progress=True,
                 )
-                self.worker.returned.connect(return_func_dim_reduction)
-                self.worker.errored.connect(activate_buttons)
+                self.worker.returned.connect(self.return_func_dim_reduction)
+                self.worker.errored.connect(self.activate_buttons)
                 self.worker.start()
 
         except Exception:
             # make buttons active again even if an exception occurred during execution
             # of the code above and not in a secondary thread
-            activate_buttons()
+            self.activate_buttons()
+
+    def activate_buttons(self, error=None, active=True):
+        """Utility function to enable all the buttons again if an error/exception happens in a secondary thread or
+        the computation has finished successfully."""
+
+        buttons_active(
+            self.run_button, self.defaults_button, self.update_button, active=active
+        )
+
+    def return_func_dim_reduction(self, result):
+        """
+        A function, which receives the result from dimensionality reduction functions if they finished
+        successfully, and writes result to the reg props table (features/properties of the layer),
+        which is also added to the napari viewer.
+
+        Parameters
+        -----------
+        result : Tuple(str, np.ndarray)
+            A tuple returned by dimensionality reduction functions, where first item is the name of the
+            algorithm, and second item is the embedding of features into the low dimensional space.
+        """
+        # all the buttons are activated again
+        self.activate_buttons()
+
+        if result[0] == "PCA":
+            # check if principal components are already present
+            # and remove them by overwriting the features
+            tabular_data = get_layer_tabular_data(self.layer_select.value)
+            dropkeys = [
+                column
+                for column in tabular_data.keys()
+                if column.startswith("PC_")
+            ]
+            df_principal_components_removed = tabular_data.drop(
+                dropkeys, axis=1
+            )
+            set_features(self.layer_select.value,
+                         df_principal_components_removed)
+
+            result_column_name = (
+                "PC_" if custom_name == DEFAULTS["custom_name"] else custom_name
+            )
+
+            # write result back to properties/features of the layer
+            for i in range(0, len(result[1].T)):
+                add_column_to_layer_tabular_data(
+                    self.layer_select.value,
+                    str(result_column_name) + str(i),
+                    result[1][:, i],
+                )
+
+        elif (
+            result[0] == "UMAP"
+            or result[0] == "t-SNE"
+            or result[0] == "Isomap"
+            or result[0] == "MDS"
+        ):
+            # write result back to properties/features of the layer
+            if custom_name == DEFAULTS["custom_name"]:
+                for i in range(0, n_components):
+                    add_column_to_layer_tabular_data(
+                        self.layer_select.value,
+                        result[0] + "_" + str(i), result[1][:, i]
+                    )
+            else:
+                for i in range(0, n_components):
+                    add_column_to_layer_tabular_data(
+                        self.layer_select.value,
+                        custom_name + "_" + str(i),
+                        result[1][:, i],
+                    )
+
+        else:
+            "Dimensionality reduction not successful. Please try again"
+            return
+
+        # add a table to napari viewer
+        show_table(self.viewer, self.layer_select.value)
+        print("Dimensionality reduction finished")
 
 
 @catch_NaNs
