@@ -35,9 +35,9 @@ class PlotterWidget(SingleAxesWidget):
         self.selection_toolbar.add_custom_button(
             name="Lasso Selection",
             tooltip="Click to enable/disable Lasso selection",
-            default_icon_path=icon_folder_path / "button1.png",
+            default_icon_path=icon_folder_path / "lasso.png",
             checkable=True,
-            checked_icon_path=icon_folder_path / "button1_checked.png",
+            checked_icon_path=icon_folder_path / "lasso_checked.png",
         )
         # Connect button to callback
         self.selection_toolbar.connect_button_callback(
@@ -206,6 +206,7 @@ class CustomLassoSelector:
         self.lasso.disconnect_events()
 
     def onselect(self, verts):
+        # TODO: Split into 2 methods depending if artist is scatter or hist2d(rgb image)
         # Get plotted data and color indices
         plotted_data = self.artist.data
         color_indices = self.artist.color_indices
@@ -215,5 +216,4 @@ class CustomLassoSelector:
         self.ind = np.nonzero(self.ind_mask)[0]
         # Set selected indices with selected color index
         color_indices[self.ind] = self.plotter.cluster_spinbox.value
-        # TODO: Replace this by pyq signal/slot
         self.artist.color_indices = color_indices  # This updates the plot
