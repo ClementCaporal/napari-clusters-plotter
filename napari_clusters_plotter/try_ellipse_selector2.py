@@ -49,7 +49,7 @@ class AspectRatioEllipse(patches.Ellipse):
     def contains_event(self, event):
         return self.contains(event)[0]
     
-    def remove(self):
+    def delete(self):
         # TODO: fix crosshair removal error
         self.center_crosshair.remove()
         self.remove()
@@ -195,8 +195,10 @@ class CustomEllipseSelector:
             self.active_ellipse.set_size(self.active_ellipse.width + increment)
             self.update_hue_inside_ellipse()
             if self.active_ellipse.width < self.MIN_RADIUS:
-                self.active_ellipse.remove()
+                # Remove active ellipse from list of ellipses
                 self.ellipses.remove(self.active_ellipse)
+                # Remove active ellipse from plot
+                self.active_ellipse.delete()
                 self.active_ellipse = None
 
     def on_move(self, event):
@@ -247,8 +249,12 @@ class CustomEllipseSelector:
         scatter_array[new_scatter_array == self.active_ellipse.color_idx] = self.active_ellipse.color_idx
         # Then, set to 0 positions that were previously inside the ellipse and now are not
         mask = (scatter_array == self.active_ellipse.color_idx) & (new_scatter_array == 0)
-        # TODO: Check if these positions are inside other ellipses and preserve their color
         scatter_array[mask] = 0
+        # Check if these positions are inside other ellipses and preserve their color
+        for ellipse in self.ellipses:
+            if ellipse != self.active_ellipse:
+                mask = (ellipse.inside_mask_array == True) & (scatter_array == 0)
+                scatter_array[mask] = ellipse.color_idx
         
         # Update scatter colors
         scatter.set_array(scatter_array)
